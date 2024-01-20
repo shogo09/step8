@@ -58,6 +58,7 @@
                             </th>
                         </tr>
                     </thead>
+                    <!--検索結果表示 -->
                     <tbody id="productList">
                         @forelse ($search_results ?? $products as $product)
                             <tr>
