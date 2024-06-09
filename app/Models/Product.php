@@ -16,13 +16,18 @@ class Product extends Model{
 
     public $timestamps = true;
 
+    public function sales()
+    {
+        return $this->hasMany(Sale::class, 'product_id');
+    }
+
     // 一覧画面表示
     public function index() {
     // productsテーブルからデータを取得（クエリビルダ）
     $products = DB::table('products')
         ->join('companies', 'company_id', '=', 'companies.id')
         ->select('products.*', 'companies.company_name')
-        ->get();
+        ->simplePaginate(10);
         return $products;
     }
 
@@ -85,21 +90,30 @@ class Product extends Model{
     }
 
     //商品検索
-     public function search($keyword, $company) {
-      $query = DB::table('products')
-          ->join('companies', 'company_id', '=', 'companies.id')
-          ->select('products.*', 'companies.company_name');
-  
-      if (!empty($keyword)) {
-          $query->where('products.product_name', 'like', "%$keyword%");
-      }
-  
-      if (!empty($company)) {
-          $query->where('companies.id', $company);
-      }
-  
-      $products = $query->get();
-  
-      return $products;
+    public function getProductSearch($searchProduct,$searchCompany,$min_price,$max_price,$min_stock,$max_stock) {
+        $products = DB::table('products')
+            ->join('companies', 'products.company_id','=', 'companies.id')
+            ->select('products.*','companies.company_name');
+            
+            if($searchProduct) {
+                $products->where('product_name', 'like', '%' . $searchProduct . '%');
+            }
+            if($searchCompany) {
+                $products->where('companies.id', $searchCompany);
+            }
+            if($min_price) {
+                $products->where('products.price', '>=',$min_price );
+            }
+            if($max_price) {
+                $products->where('products.price', '<=',$max_price );
+            }
+            if($min_stock) {
+                $products->where('products.stock', '>=',$min_stock );
+            }
+            if($max_stock) {
+                $products->where('products.stock', '<=',$max_stock );
+            }
+        return $products->paginate(10);
     }
- }
+
+}

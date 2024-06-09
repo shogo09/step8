@@ -4,9 +4,11 @@ namespace App\Http\Controllers;
 
 use App\Models\Company;
 use App\Models\Product;
+use App\Models\Sale;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use App\Http\Requests\CreateRequest;
+use Illuminate\Support\Facades\Log;
 
 class ProductController extends Controller
 {
@@ -15,41 +17,41 @@ class ProductController extends Controller
      *
      * @return \Illuminate\Http\Response
      */
+   
+    
     //商品一覧画面表示
-    public function index(Request $request) {
-
+    public function index() {
         $product_model = new Product();
         $company_model = new Company();
-        $companies = $company_model->index();
-        
-        // 検索キーワードとメーカーがある場合は検索を実行し、結果をビューに渡す
-        $keyword = $request->input('keyword');
-        $company = $request->input('company');
-    
-        if (!empty($keyword) || !empty($company)) {
-            $search_results = $product_model->search($keyword, $company);
-            return view('index', ['search_results' => $search_results, 'companies' => $companies]);
-        }
-        
-        // 検索キーワードとメーカーがない場合は通常の商品一覧を表示する
         $products = $product_model->index();
-        return view('index', ['products' => $products, 'companies' => $companies]);
+        $companies = $company_model->index();
+        return view('index', ['products' => $products,'companies' => $companies]);        
     }
 
+    
     //検索
     public function search(Request $request) {
+        $search_product = $request->input('keyword');
+        $search_company = $request->input('company');
+        $min_price = $request->input('min_price');
+        $max_price = $request->input('max_price');
+        $min_stock = $request->input('min_stock');
+        $max_stock = $request->input('max_stock');
+        DB::beginTransaction();
 
-        $keyword = $request->input('keyword');
-        $company = $request->input('company');
-        
-        $product_model = new Product();
-        $company_model = new Company();
-        $companies = $company_model->index(); 
-        $search_results = $product_model->search($keyword, $company);
-
-        return view('index', ['search_results' => $search_results, 'companies' => $companies]);
+        try {
+            $product_model = new Product();
+            $company_model = new Company();
+            $companies = $company_model->index();
+            $products = $product_model->getProductSearch($search_product, $search_company, $min_price, $max_price, $min_stock, $max_stock);
+            DB::commit();
+        }catch (\Exception $e){
+            DB::rollback();
+            return back();
+        }
+        return response()->json($products);
     }
-   
+    
     // 新規登録画面の表示
     public function create() {
 
@@ -61,16 +63,15 @@ class ProductController extends Controller
     //商品新規登録
     public function store(CreateRequest $request) {     
 
-    // アップロードされた画像を取得
+        // アップロードされた画像を取得
         $file = $request->file('image');
-    // 取得したファイル名で保存
+        // 取得したファイル名で保存
         if ($file) {
             $file_name = $file->getClientOriginalName();
             $file->storeAs('public/images', $file_name);
         } else {
             $file_name = null;
         }
-
         //トランザクション
         DB::beginTransaction();
         try {
@@ -115,7 +116,6 @@ class ProductController extends Controller
       } else {
         $file_name = null;
       }
-
       //トランザクション開始
       DB::beginTransaction();
       try {
@@ -127,25 +127,52 @@ class ProductController extends Controller
         DB::rollback();
         return back();
       }
-
         //処理が完了したら自画面にリダイレクト
         return redirect()->route('edit',['id' => $id]);
     }
-      
-    // 削除ボタン
-    public function delete($id) {
+    
+    //削除
+    public function destroy($id) {
+    DB::beginTransaction();
+    
+    try {
+        Product::find($id)->sales()->delete();
+        Product::find($id)->delete();
+        DB::commit();
+        return response()->json([
+            'message' => '商品が削除されました'
+        ]);
+    } catch (\Exception $e){
+        DB::rollback();
+        Log::error($e->getMessage());
+        return response()->json([
+            'message' => '商品の削除に失敗しました'
+        ]);
+    }
+}
+    // 購入画面の表示
+    public function cart($id) {
+        $sale_model = new Sale();
+        $product = $sale_model->detail($id);            
+        return view('cart',['product' => $product]);       
+    }
 
-        // トランザクション
+    public function purchase(Request $request, $id) {
+        $quantity = $request->input('quantity');
         DB::beginTransaction();
-        try{
-            Product::destroy($id);
+
+        try {
+            $sale_model = new Sale();
+            $message = $sale_model->purchase($quantity, $id);   
             DB::commit();
-        } catch(\Throwable $e) {
+        } catch (\Exception $e){
             DB::rollback();
             return back();
+
         }
-        
-        //処理が完了したら自画面にリダイレクト
-        return redirect()->route('index');
-    }
+        return response()->json([
+            'message' => $message
+        ]);
+
+ }
 }
